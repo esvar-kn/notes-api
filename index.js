@@ -1,7 +1,14 @@
 //const http = require("http");
+const dotenv = require('dotenv');
 const express = require('express');
+const mongoose = require('mongoose');
+const note = require("./models/note");
+
+dotenv.config();
+
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT;
+const MONGO_URI = process.env.MONGO_URI;
 app.use(express.json());
 
 // const server = http.createServer((req, res) => {
@@ -27,8 +34,20 @@ const authMiddleware = (req, res, next) => {
     console.log('Auth check: no real logic yet');
     next();
 }
+// app.use(authMiddleware);
 
-app.use(authMiddleware);
+// Add Notes
+app.post("/api/v1/notes", async (req, res) => {
+    const { title, content } = req.body;
+    const newNote = new note({ title, content });
+    await newNote.save();
+    res.status(201).send("Note Created Successfully");
+});
+
+// Get All Notes
+app.get("/api/v1/notes", (req, res) => {
+    res.status(200).send("Get All Notes Request Received");
+});
 
 // Root Route
 app.get("/", (req, res) => {
@@ -40,6 +59,11 @@ app.use((err, req, res, next) => {
     res.status(err.status || 500).json({ success: false, message: err.message });
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running at port ${PORT}`)
-});
+mongoose.connect(MONGO_URI)
+    .then(() => {
+        console.log('MongoDB Connected');
+        app.listen(PORT, () => {
+            console.log(`Server is running on http://localhost:${PORT}`);
+        })
+    })
+    .catch(err => console.error('Connection Error:', err));
