@@ -8,47 +8,45 @@
 
 ## Table of Contents
 
-- [Auth Endpoints](#auth-endpoints)
+- [User Endpoints](#user-endpoints)
   - [Register](#1-register)
   - [Login](#2-login)
-  - [Logout](#3-logout)
-  - [Refresh Token](#4-refresh-token)
-  - [Get Current User](#5-get-current-user)
-  - [Update Profile](#6-update-profile)
+  - [Update User](#3-update-user)
+  - [Delete User](#4-delete-user)
 - [Notes Endpoints](#notes-endpoints)
   - [Create Note](#1-create-note)
   - [Get All Notes](#2-get-all-notes)
-  - [Search Notes](#3-search-notes)
-  - [Get Note by ID](#4-get-note-by-id)
-  - [Update Note](#5-update-note)
-  - [Delete Note](#6-delete-note)
+  - [Get Note by ID](#3-get-note-by-id)
+  - [Update Note](#4-update-note)
+  - [Delete Note](#5-delete-note)
+- [Health Check](#health-check)
 - [Data Schemas](#data-schemas)
 - [Error Responses](#error-responses)
 
 ---
 
-## Auth Endpoints
+## User Endpoints
 
 ### 1. Register
 
-| Field        | Value                   |
-|--------------|-------------------------|
-| **Method**   | `POST`                  |
-| **Endpoint** | `/api/v1/auth/register` |
-| **Auth**     | Not required            |
-| **Status**   | `201 Created`           |
+| Field        | Value                    |
+|--------------|--------------------------|
+| **Method**   | `POST`                   |
+| **Endpoint** | `/api/v1/users/register` |
+| **Auth**     | Not required             |
+| **Status**   | `201 Created`            |
 
 #### Request Body
 
-| Field      | Type     | Required | Description                             |
-|------------|----------|----------|-----------------------------------------|
-| `username` | `string` | Yes      | Unique username (3–30 chars)            |
-| `email`    | `string` | Yes      | Valid email address                     |
+| Field      | Type     | Required | Description                                        |
+|------------|----------|----------|----------------------------------------------------|
+| `name`     | `string` | Yes      | Display name (2–50 chars)                          |
+| `email`    | `string` | Yes      | Valid, unique email address                        |
 | `password` | `string` | Yes      | Plaintext password (hashed on server, min 8 chars) |
 
 ```json
 {
-  "username": "john_doe",
+  "name": "John Doe",
   "email": "john@example.com",
   "password": "securePassword123"
 }
@@ -56,141 +54,154 @@
 
 #### Response Body
 
-| Field     | Type     | Description                         |
-|-----------|----------|-------------------------------------|
-| `message` | `string` | Confirmation message                |
-| `token`   | `string` | JWT token for immediate use         |
+| Field     | Type      | Description                     |
+|-----------|-----------|---------------------------------|
+| `success` | `boolean` | `true`                          |
+| `data`    | `object`  | `{ name, email }` of new user   |
+| `message` | `string`  | Confirmation message            |
 
 ```json
 {
-  "message": "User registered successfully",
-  "token": "<jwt_token>"
+  "success": true,
+  "data": { "name": "John Doe", "email": "john@example.com" },
+  "message": "User Registered Successfully"
 }
 ```
+
+#### Errors
+
+| Status | When                          |
+|--------|-------------------------------|
+| `400`  | Validation failure            |
+| `409`  | Email is already registered   |
 
 ---
 
 ### 2. Login
 
-| Field        | Value                |
-|--------------|----------------------|
-| **Method**   | `POST`               |
-| **Endpoint** | `/api/v1/auth/login` |
-| **Auth**     | Not required         |
-| **Status**   | `200 OK`             |
-
-#### Request Body
-
-| Field        | Type      | Required | Description                                        |
-|--------------|-----------|----------|----------------------------------------------------|
-| `username`   | `string`  | Yes      | Registered username                                |
-| `password`   | `string`  | Yes      | Account password                                   |
-| `rememberMe` | `boolean` | No       | If `true`, issues a long-lived refresh token (default: `false`) |
-
-```json
-{
-  "username": "john_doe",
-  "password": "securePassword123",
-  "rememberMe": true
-}
-```
-
-#### Response Body
-
-| Field           | Type     | Description                                       |
-|-----------------|----------|---------------------------------------------------|
-| `message`       | `string` | Confirmation message                              |
-| `token`         | `string` | Short-lived JWT access token                      |
-| `refreshToken`  | `string` | Long-lived refresh token (only if `rememberMe` is `true`) |
-
-```json
-{
-  "message": "User logged in successfully",
-  "token": "<jwt_access_token>",
-  "refreshToken": "<jwt_refresh_token>"
-}
-```
-
----
-
-### 3. Logout
-
 | Field        | Value                 |
 |--------------|-----------------------|
 | **Method**   | `POST`                |
-| **Endpoint** | `/api/v1/auth/logout` |
-| **Auth**     | Required              |
+| **Endpoint** | `/api/v1/users/login` |
+| **Auth**     | Not required          |
 | **Status**   | `200 OK`              |
 
 #### Request Body
 
-| Field          | Type     | Required | Description                                         |
-|----------------|----------|----------|-----------------------------------------------------|
-| `refreshToken` | `string` | No       | If provided, invalidates the refresh token as well  |
+| Field      | Type     | Required | Description       |
+|------------|----------|----------|-------------------|
+| `email`    | `string` | Yes      | Registered email  |
+| `password` | `string` | Yes      | Account password  |
 
 ```json
 {
-  "refreshToken": "<jwt_refresh_token>"
+  "email": "john@example.com",
+  "password": "securePassword123"
 }
 ```
 
 #### Response Body
 
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| `message` | `string` | Confirmation message |
+| Field     | Type      | Description                                            |
+|-----------|-----------|--------------------------------------------------------|
+| `success` | `boolean` | `true`                                                 |
+| `data`    | `object`  | `{ name, email, token }` — JWT expires per `JWT_EXPIRY` |
+| `message` | `string`  | Confirmation message                                   |
 
 ```json
 {
-  "message": "User logged out successfully"
+  "success": true,
+  "data": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "token": "<jwt_token>"
+  },
+  "message": "User Logged In Successfully"
 }
 ```
 
+The JWT payload contains `id`, `email`, and `role`.
+
+#### Errors
+
+| Status | When                                        |
+|--------|---------------------------------------------|
+| `400`  | Validation failure                          |
+| `401`  | Unknown email or wrong password (generic message) |
+
 ---
 
-### 4. Refresh Token
+### 3. Update User
 
-| Field        | Value                        |
-|--------------|------------------------------|
-| **Method**   | `POST`                       |
-| **Endpoint** | `/api/v1/auth/refresh-token` |
-| **Auth**     | Not required                 |
-| **Status**   | `200 OK`                     |
+| Field        | Value           |
+|--------------|-----------------|
+| **Method**   | `PUT`           |
+| **Endpoint** | `/api/v1/users` |
+| **Auth**     | Required        |
+| **Status**   | `200 OK`        |
+
+Users may only update their own profile — `id` must match the authenticated user's id.
 
 #### Request Body
 
-| Field          | Type     | Required | Description                              |
-|----------------|----------|----------|------------------------------------------|
-| `refreshToken` | `string` | Yes      | Valid refresh token issued at login      |
+| Field      | Type     | Required | Description                              |
+|------------|----------|----------|------------------------------------------|
+| `id`       | `string` | Yes      | Own user `_id` (24-char hex ObjectId)    |
+| `name`     | `string` | No       | New display name (min 2 chars)           |
+| `email`    | `string` | No       | New email address                        |
+| `password` | `string` | No       | New password (min 8 chars, re-hashed)    |
 
 ```json
 {
-  "refreshToken": "<jwt_refresh_token>"
+  "id": "64a7f2e3c9a4b10012345678",
+  "name": "John Updated",
+  "email": "newemail@example.com"
 }
 ```
 
 #### Response Body
 
-| Field     | Type     | Description              |
-|-----------|----------|--------------------------|
-| `token`   | `string` | New short-lived JWT token |
+| Field         | Type      | Description                            |
+|---------------|-----------|----------------------------------------|
+| `success`     | `boolean` | `true`                                 |
+| `updatedUser` | `object`  | Updated user document (password omitted) |
+| `message`     | `string`  | Confirmation message                   |
 
 ```json
 {
-  "token": "<new_jwt_access_token>"
+  "success": true,
+  "updatedUser": {
+    "_id": "64a7f2e3c9a4b10012345678",
+    "name": "John Updated",
+    "email": "newemail@example.com",
+    "createdAt": "2026-07-02T10:00:00.000Z",
+    "updatedAt": "2026-07-05T09:00:00.000Z"
+  },
+  "message": "User Updated Successfully"
 }
 ```
 
+#### Errors
+
+| Status | When                                       |
+|--------|--------------------------------------------|
+| `400`  | Validation failure                         |
+| `401`  | Missing or invalid token                   |
+| `403`  | `id` does not match the authenticated user |
+| `404`  | User not found                             |
+
 ---
 
-### 5. Get Current User
+### 4. Delete User
 
-| Field        | Value             |
-|--------------|-------------------|
-| **Method**   | `GET`             |
-| **Endpoint** | `/api/v1/auth/me` |
-| **Auth**     | Required          |
-| **Status**   | `200 OK`          |
+| Field        | Value           |
+|--------------|-----------------|
+| **Method**   | `DELETE`        |
+| **Endpoint** | `/api/v1/users` |
+| **Auth**     | Required        |
+| **Status**   | `200 OK`        |
+
+Deletes the authenticated user's own account (identified by the JWT — no body needed).
 
 #### Request Body
 
@@ -198,68 +209,26 @@ _None_
 
 #### Response Body
 
-| Field        | Type     | Description                      |
-|--------------|----------|----------------------------------|
-| `_id`        | `string` | User's unique ID                 |
-| `username`   | `string` | Logged-in username               |
-| `email`      | `string` | User's email address             |
-| `created_at` | `string` | ISO 8601 account creation date   |
-
 ```json
 {
-  "_id": "64a7f2e3c9a4b10012345678",
-  "username": "john_doe",
-  "email": "john@example.com",
-  "created_at": "2026-07-02T10:00:00.000Z"
+  "success": true,
+  "message": "User Account Deleted Successfully"
 }
 ```
 
----
+#### Errors
 
-### 6. Update Profile
-
-| Field        | Value             |
-|--------------|-------------------|
-| **Method**   | `PATCH`           |
-| **Endpoint** | `/api/v1/auth/me` |
-| **Auth**     | Required          |
-| **Status**   | `200 OK`          |
-
-#### Request Body
-
-> At least one field must be provided.
-
-| Field           | Type     | Required | Description                                       |
-|-----------------|----------|----------|---------------------------------------------------|
-| `email`         | `string` | No       | New email address                                 |
-| `currentPassword` | `string` | No     | Current password (required if changing password)  |
-| `newPassword`   | `string` | No       | New password (min 8 chars)                        |
-
-```json
-{
-  "email": "newemail@example.com",
-  "currentPassword": "oldPassword123",
-  "newPassword": "newSecurePassword456"
-}
-```
-
-#### Response Body
-
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| `message` | `string` | Confirmation message |
-
-```json
-{
-  "message": "Profile updated successfully"
-}
-```
+| Status | When                     |
+|--------|--------------------------|
+| `401`  | Missing or invalid token |
+| `404`  | User not found           |
 
 ---
 
 ## Notes Endpoints
 
-> All Notes endpoints require a **JWT Bearer Token** in the `Authorization` header.
+> All Notes endpoints require a **JWT Bearer Token** in the `Authorization` header,
+> and only operate on notes owned by the authenticated user.
 > ```
 > Authorization: Bearer <token>
 > ```
@@ -277,41 +246,39 @@ _None_
 
 #### Request Body
 
-| Field      | Type       | Required | Description                                    |
-|------------|------------|----------|------------------------------------------------|
-| `title`    | `string`   | Yes      | Title of the note (max 200 chars)              |
-| `content`  | `string`   | Yes      | Body content of the note                       |
-| `tags`     | `string[]` | No       | Optional list of tags                          |
-| `isPinned` | `boolean`  | No       | Pin note to top of list (default: `false`)     |
+| Field     | Type     | Required | Description                       |
+|-----------|----------|----------|-----------------------------------|
+| `title`   | `string` | Yes      | Title of the note (1–200 chars)   |
+| `content` | `string` | Yes      | Body content (non-empty)          |
 
 ```json
 {
   "title": "My First Note",
-  "content": "This is the note content.",
-  "tags": ["work", "important"],
-  "isPinned": false
+  "content": "This is the note content."
 }
 ```
 
 #### Response Body
 
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| `message` | `string` | Confirmation message |
-| `note`    | `object` | The created note     |
+| Field     | Type      | Description          |
+|-----------|-----------|----------------------|
+| `success` | `boolean` | `true`               |
+| `data`    | `object`  | The created note     |
+| `message` | `string`  | Confirmation message |
 
 ```json
 {
-  "message": "Note created successfully",
-  "note": {
+  "success": true,
+  "data": {
     "_id": "64a7f2e3c9a4b10012345abc",
     "title": "My First Note",
     "content": "This is the note content.",
-    "tags": ["work", "important"],
-    "isPinned": false,
-    "created_at": "2026-07-02T15:00:00.000Z",
-    "updated_at": "2026-07-02T15:00:00.000Z"
-  }
+    "owner": "64a7f2e3c9a4b10012345678",
+    "createdAt": "2026-07-05T09:00:00.000Z",
+    "updatedAt": "2026-07-05T09:00:00.000Z",
+    "__v": 0
+  },
+  "message": "Note Created Successfully"
 }
 ```
 
@@ -326,125 +293,118 @@ _None_
 | **Auth**     | Required        |
 | **Status**   | `200 OK`        |
 
+Returns the authenticated user's notes, paginated and sorted.
+
 #### Query Parameters
 
-| Param      | Type      | Required | Default      | Description                                                      |
-|------------|-----------|----------|--------------|------------------------------------------------------------------|
-| `page`     | `integer` | No       | `1`          | Page number for pagination                                       |
-| `limit`    | `integer` | No       | `10`         | Number of notes per page (max: `100`)                            |
-| `tags`     | `string`  | No       | —            | Comma-separated list of tags to filter by (e.g. `work,urgent`)  |
-| `isPinned` | `boolean` | No       | —            | Filter to only pinned (`true`) or unpinned (`false`) notes       |
-| `sortBy`   | `string`  | No       | `created_at` | Field to sort by: `created_at`, `updated_at`, or `title`        |
-| `order`    | `string`  | No       | `desc`       | Sort direction: `asc` or `desc`                                  |
+| Param   | Type      | Required | Default     | Description                                          |
+|---------|-----------|----------|-------------|------------------------------------------------------|
+| `page`  | `integer` | No       | `1`         | Page number for pagination                           |
+| `limit` | `integer` | No       | `10`        | Number of notes per page                             |
+| `sort`  | `string`  | No       | `createdAt` | Field to sort by (e.g. `createdAt`, `title`)         |
+| `order` | `string`  | No       | `desc`      | Sort direction: `asc` or `desc`                      |
+| `filter`| `object`  | No       | `{}`        | Case-insensitive regex filter on `title` / `content` |
+
+> **Note:** Express 5's default query parser is `simple`, which does not parse
+> bracketed keys like `filter[title]=x` into nested objects — so the `filter`
+> parameter is currently not reachable via query string. Enable the extended
+> parser (`app.set('query parser', 'extended')`) to use it.
 
 **Example Request:**
 ```
-GET /api/v1/notes?page=1&limit=10&tags=work,urgent&sortBy=updated_at&order=desc
+GET /api/v1/notes?page=1&limit=10&sort=createdAt&order=desc
 ```
-
-#### Request Body
-
-_None_
 
 #### Response Body
 
-| Field          | Type       | Description                             |
-|----------------|------------|-----------------------------------------|
-| `data`         | `object[]` | Array of note objects                   |
-| `total`        | `integer`  | Total number of notes matching the query |
-| `page`         | `integer`  | Current page number                     |
-| `limit`        | `integer`  | Notes per page                          |
-| `totalPages`   | `integer`  | Total number of pages                   |
+| Field     | Type       | Description                         |
+|-----------|------------|-------------------------------------|
+| `success` | `boolean`  | `true`                              |
+| `count`   | `integer`  | Number of notes in this page        |
+| `page`    | `integer`  | Current page number                 |
+| `limit`   | `integer`  | Notes per page                      |
+| `notes`   | `object[]` | Array of note objects               |
+| `message` | `string`   | Confirmation message                |
 
 ```json
 {
-  "data": [
+  "success": true,
+  "count": 2,
+  "page": 1,
+  "limit": 10,
+  "notes": [
     {
       "_id": "64a7f2e3c9a4b10012345abc",
       "title": "My First Note",
       "content": "This is the note content.",
-      "tags": ["work", "important"],
-      "isPinned": false,
-      "created_at": "2026-07-02T15:00:00.000Z",
-      "updated_at": "2026-07-02T15:00:00.000Z"
+      "owner": "64a7f2e3c9a4b10012345678",
+      "createdAt": "2026-07-05T09:00:00.000Z",
+      "updatedAt": "2026-07-05T09:00:00.000Z",
+      "__v": 0
     }
   ],
-  "total": 42,
-  "page": 1,
-  "limit": 10,
-  "totalPages": 5
+  "message": "Notes Fetched Successfully"
 }
 ```
 
 ---
 
-### 3. Search Notes
+### 3. Get Note by ID
 
-| Field        | Value                  |
-|--------------|------------------------|
-| **Method**   | `GET`                  |
-| **Endpoint** | `/api/v1/notes/search` |
-| **Auth**     | Required               |
-| **Status**   | `200 OK`               |
+| Field        | Value               |
+|--------------|---------------------|
+| **Method**   | `GET`               |
+| **Endpoint** | `/api/v1/notes/:id` |
+| **Auth**     | Required            |
+| **Status**   | `200 OK`            |
 
-#### Query Parameters
+#### URL Parameters
 
-| Param   | Type      | Required | Default | Description                                                  |
-|---------|-----------|----------|---------|--------------------------------------------------------------|
-| `q`     | `string`  | Yes      | —       | Full-text search keyword across `title` and `content`        |
-| `tags`  | `string`  | No       | —       | Comma-separated list of tags to additionally filter by       |
-| `page`  | `integer` | No       | `1`     | Page number for pagination                                   |
-| `limit` | `integer` | No       | `10`    | Number of results per page (max: `100`)                      |
-
-**Example Request:**
-```
-GET /api/v1/notes/search?q=meeting+notes&tags=work&page=1&limit=5
-```
-
-#### Request Body
-
-_None_
+| Param | Type     | Required | Description      |
+|-------|----------|----------|------------------|
+| `id`  | `string` | Yes      | The note's `_id` |
 
 #### Response Body
 
-| Field        | Type       | Description                               |
-|--------------|------------|-------------------------------------------|
-| `data`       | `object[]` | Array of matching note objects            |
-| `total`      | `integer`  | Total number of results found             |
-| `page`       | `integer`  | Current page number                       |
-| `limit`      | `integer`  | Results per page                          |
-| `totalPages` | `integer`  | Total number of pages                     |
+| Field     | Type      | Description          |
+|-----------|-----------|----------------------|
+| `success` | `boolean` | `true`               |
+| `note`    | `object`  | The requested note   |
+| `message` | `string`  | Confirmation message |
 
 ```json
 {
-  "data": [
-    {
-      "_id": "64a7f2e3c9a4b10012345abc",
-      "title": "Meeting Notes — Q3",
-      "content": "Discussed roadmap and milestones.",
-      "tags": ["work"],
-      "isPinned": true,
-      "created_at": "2026-07-01T09:00:00.000Z",
-      "updated_at": "2026-07-01T10:00:00.000Z"
-    }
-  ],
-  "total": 3,
-  "page": 1,
-  "limit": 5,
-  "totalPages": 1
+  "success": true,
+  "note": {
+    "_id": "64a7f2e3c9a4b10012345abc",
+    "title": "My First Note",
+    "content": "This is the note content.",
+    "owner": "64a7f2e3c9a4b10012345678",
+    "createdAt": "2026-07-05T09:00:00.000Z",
+    "updatedAt": "2026-07-05T09:00:00.000Z",
+    "__v": 0
+  },
+  "message": "Note Fetched Successfully"
 }
 ```
 
+#### Errors
+
+| Status | When                                             |
+|--------|--------------------------------------------------|
+| `400`  | `id` is not a valid ObjectId                     |
+| `404`  | Note does not exist or belongs to another user   |
+
 ---
 
-### 4. Get Note by ID
+### 4. Update Note
 
-| Field        | Value                |
-|--------------|----------------------|
-| **Method**   | `GET`                |
-| **Endpoint** | `/api/v1/notes/:id`  |
-| **Auth**     | Required             |
-| **Status**   | `200 OK`             |
+| Field        | Value               |
+|--------------|---------------------|
+| **Method**   | `PUT`               |
+| **Endpoint** | `/api/v1/notes/:id` |
+| **Auth**     | Required            |
+| **Status**   | `200 OK`            |
 
 #### URL Parameters
 
@@ -454,101 +414,61 @@ _None_
 
 #### Request Body
 
-_None_
+Both fields are required (full replacement, not a patch).
 
-#### Response Body
-
-| Field        | Type       | Description                |
-|--------------|------------|----------------------------|
-| `_id`        | `string`   | Unique note ID             |
-| `title`      | `string`   | Title of the note          |
-| `content`    | `string`   | Body content of the note   |
-| `tags`       | `string[]` | List of tags               |
-| `isPinned`   | `boolean`  | Whether the note is pinned |
-| `created_at` | `string`   | ISO 8601 creation date     |
-| `updated_at` | `string`   | ISO 8601 last updated date |
-
-```json
-{
-  "_id": "64a7f2e3c9a4b10012345abc",
-  "title": "My First Note",
-  "content": "This is the note content.",
-  "tags": ["work", "important"],
-  "isPinned": false,
-  "created_at": "2026-07-02T15:00:00.000Z",
-  "updated_at": "2026-07-02T15:00:00.000Z"
-}
-```
-
----
-
-### 5. Update Note
-
-| Field        | Value                |
-|--------------|----------------------|
-| **Method**   | `PUT`                |
-| **Endpoint** | `/api/v1/notes/:id`  |
-| **Auth**     | Required             |
-| **Status**   | `200 OK`             |
-
-#### URL Parameters
-
-| Param | Type     | Required | Description      |
-|-------|----------|----------|------------------|
-| `id`  | `string` | Yes      | The note's `_id` |
-
-#### Request Body
-
-> At least one field must be provided.
-
-| Field      | Type       | Required | Description                                    |
-|------------|------------|----------|------------------------------------------------|
-| `title`    | `string`   | No       | Updated title                                  |
-| `content`  | `string`   | No       | Updated body content                           |
-| `tags`     | `string[]` | No       | Updated list of tags (replaces existing tags)  |
-| `isPinned` | `boolean`  | No       | Pin or unpin the note                          |
+| Field     | Type     | Required | Description                     |
+|-----------|----------|----------|---------------------------------|
+| `title`   | `string` | Yes      | Updated title (1–200 chars)     |
+| `content` | `string` | Yes      | Updated body content (non-empty) |
 
 ```json
 {
   "title": "Updated Title",
-  "content": "Updated content goes here.",
-  "tags": ["personal"],
-  "isPinned": true
+  "content": "Updated content goes here."
 }
 ```
 
 #### Response Body
 
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| `message` | `string` | Confirmation message |
-| `note`    | `object` | The updated note     |
+| Field         | Type      | Description          |
+|---------------|-----------|----------------------|
+| `success`     | `boolean` | `true`               |
+| `updatedNote` | `object`  | The updated note     |
+| `message`     | `string`  | Confirmation message |
 
 ```json
 {
-  "message": "Note updated successfully",
-  "note": {
+  "success": true,
+  "updatedNote": {
     "_id": "64a7f2e3c9a4b10012345abc",
     "title": "Updated Title",
     "content": "Updated content goes here.",
-    "tags": ["personal"],
-    "isPinned": true,
-    "created_at": "2026-07-02T15:00:00.000Z",
-    "updated_at": "2026-07-02T16:00:00.000Z"
-  }
+    "owner": "64a7f2e3c9a4b10012345678",
+    "createdAt": "2026-07-05T09:00:00.000Z",
+    "updatedAt": "2026-07-05T10:00:00.000Z",
+    "__v": 0
+  },
+  "message": "Note Updated Successfully"
 }
 ```
 
+#### Errors
+
+| Status | When                                             |
+|--------|--------------------------------------------------|
+| `400`  | Validation failure or invalid ObjectId           |
+| `404`  | Note does not exist or belongs to another user   |
+
 ---
 
-### 6. Delete Note
+### 5. Delete Note
 
-| Field        | Value                |
-|--------------|----------------------|
-| **Method**   | `DELETE`             |
-| **Endpoint** | `/api/v1/notes/:id`  |
-| **Auth**     | Required             |
-| **Status**   | `204 No Content`     |
+| Field        | Value               |
+|--------------|---------------------|
+| **Method**   | `DELETE`            |
+| **Endpoint** | `/api/v1/notes/:id` |
+| **Auth**     | Required            |
+| **Status**   | `200 OK`            |
 
 #### URL Parameters
 
@@ -556,75 +476,96 @@ _None_
 |-------|----------|----------|------------------|
 | `id`  | `string` | Yes      | The note's `_id` |
 
-#### Request Body
-
-_None_
-
 #### Response Body
-
-| Field     | Type     | Description          |
-|-----------|----------|----------------------|
-| `message` | `string` | Confirmation message |
 
 ```json
 {
-  "message": "Note deleted successfully"
+  "success": true,
+  "message": "Note Deleted Successfully"
 }
 ```
+
+#### Errors
+
+| Status | When                                             |
+|--------|--------------------------------------------------|
+| `400`  | `id` is not a valid ObjectId                     |
+| `404`  | Note does not exist or belongs to another user   |
+
+---
+
+## Health Check
+
+| Field        | Value    |
+|--------------|----------|
+| **Method**   | `GET`    |
+| **Endpoint** | `/`      |
+| **Auth**     | Not required |
+| **Status**   | `200 OK` |
+
+Returns the plain-text string `API Server Running`.
 
 ---
 
 ## Data Schemas
 
-### Note
-
-| Field        | Type       | Description                            |
-|--------------|------------|----------------------------------------|
-| `_id`        | `ObjectId` | Auto-generated unique ID               |
-| `title`      | `String`   | Title of the note (max 200 chars)      |
-| `content`    | `String`   | Body content of the note               |
-| `tags`       | `[String]` | Array of tag strings                   |
-| `isPinned`   | `Boolean`  | Whether the note is pinned (default: `false`) |
-| `created_at` | `Date`     | Timestamp when note was created        |
-| `updated_at` | `Date`     | Timestamp when note was last updated   |
+Timestamps are managed by Mongoose (`timestamps: true`) as `createdAt` / `updatedAt`.
 
 ### User
 
-| Field        | Type       | Description                              |
-|--------------|------------|------------------------------------------|
-| `_id`        | `ObjectId` | Auto-generated unique ID                 |
-| `username`   | `String`   | Unique username (3–30 chars)             |
-| `email`      | `String`   | Unique email address                     |
-| `password`   | `String`   | Hashed password (never returned via API) |
-| `created_at` | `Date`     | Timestamp when user was created          |
-| `updated_at` | `Date`     | Timestamp when user was last updated     |
+| Field       | Type       | Description                                |
+|-------------|------------|--------------------------------------------|
+| `_id`       | `ObjectId` | Auto-generated unique ID                   |
+| `name`      | `String`   | Display name (trimmed)                     |
+| `email`     | `String`   | Unique email address (stored lowercase)    |
+| `password`  | `String`   | bcrypt-hashed password (never returned)    |
+| `createdAt` | `Date`     | Timestamp when user was created            |
+| `updatedAt` | `Date`     | Timestamp when user was last updated       |
+
+### Note
+
+| Field       | Type       | Description                                |
+|-------------|------------|--------------------------------------------|
+| `_id`       | `ObjectId` | Auto-generated unique ID                   |
+| `title`     | `String`   | Title of the note (trimmed, max 200 chars) |
+| `content`   | `String`   | Body content of the note                   |
+| `owner`     | `ObjectId` | Reference to the owning `user`             |
+| `createdAt` | `Date`     | Timestamp when note was created            |
+| `updatedAt` | `Date`     | Timestamp when note was last updated       |
 
 ---
 
 ## Error Responses
 
-All errors follow a consistent shape:
+All errors — route errors, auth failures, validation failures, unknown routes —
+flow through a central error handler and share a consistent shape:
 
-| Field     | Type      | Description                       |
-|-----------|-----------|-----------------------------------|
-| `success` | `boolean` | Always `false` on error           |
-| `message` | `string`  | Human-readable error description  |
-
-### Common HTTP Status Codes
-
-| Status | Meaning                                          |
-|--------|--------------------------------------------------|
-| `400`  | Bad Request — missing or invalid fields          |
-| `401`  | Unauthorized — missing or invalid JWT token      |
-| `403`  | Forbidden — access to resource not allowed       |
-| `404`  | Not Found — resource does not exist              |
-| `422`  | Unprocessable Entity — validation errors         |
-| `429`  | Too Many Requests — rate limit exceeded          |
-| `500`  | Internal Server Error — unexpected server error  |
+| Field     | Type       | Description                                            |
+|-----------|------------|--------------------------------------------------------|
+| `success` | `boolean`  | Always `false` on error                                |
+| `message` | `string`   | Human-readable error description                       |
+| `errors`  | `object[]` | Validation failures only: `{ field, message }` entries |
+| `stack`   | `string`   | Development only (`NODE_ENV !== 'production'`)         |
 
 ```json
 {
   "success": false,
-  "message": "Unauthorized: token is missing or invalid"
+  "message": "Validation Error",
+  "errors": [
+    { "field": "email", "message": "Invalid email address" }
+  ]
 }
 ```
+
+Requests to undefined routes return `404` with `"Route <METHOD> <path> not found"`.
+
+### HTTP Status Codes Used
+
+| Status | Meaning                                                        |
+|--------|----------------------------------------------------------------|
+| `400`  | Bad Request — validation failure or malformed ObjectId          |
+| `401`  | Unauthorized — missing/invalid/expired JWT, or bad credentials |
+| `403`  | Forbidden — attempting to modify another user's profile        |
+| `404`  | Not Found — resource or route does not exist                   |
+| `409`  | Conflict — email already registered / duplicate field value    |
+| `500`  | Internal Server Error — unexpected server error                |
