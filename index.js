@@ -1,4 +1,4 @@
-const dotenv = require('dotenv');
+require('dotenv').config(); // Must run before any module that reads process.env at require time (e.g. utils/logger)
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
@@ -9,8 +9,6 @@ const user = require("./models/user");
 const auth = require("./middlewares/auth");
 const logger = require("./utils/logger");
 const AppError = require("./utils/appError");
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT;
@@ -27,13 +25,9 @@ app.use((req, res, next) => {
     res.on('finish', () => {
         const duration = Date.now() - start;
         const message = `${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`;
-        if (res.statusCode >= 500) {
-            logger.error(message);
-        } else if (res.statusCode >= 400) {
-            logger.warn(message);
-        } else {
-            logger.http(message);
-        }
+        if (res.statusCode >= 500) logger.error(message);
+        else if (res.statusCode >= 400) logger.warn(message);
+        else logger.http(message);
     });
     next();
 });
