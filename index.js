@@ -9,6 +9,8 @@ const user = require("./models/user");
 const auth = require("./middlewares/auth");
 const logger = require("./utils/logger");
 const AppError = require("./utils/appError");
+const { PrismaClient } = require("./generated/prisma");
+const prisma = new PrismaClient();
 
 const app = express();
 const PORT = process.env.PORT;
@@ -178,10 +180,15 @@ app.delete("/api/v1/users", auth.protect, catchAsync(async (req, res) => {
 // Route for creating a new note
 app.post("/api/v1/notes", auth.protect, validate(NoteSchema), catchAsync(async (req, res) => {
     const { title, content } = req.body;
-    const owner = req.user.id;
+    const userId = parseInt(req.user.id, 10);
 
-    const newNote = new note({ title, content, owner });
-    await newNote.save();
+    const newNote = await prisma.note.create({
+        data: {
+            title,
+            content,
+            userId
+        }
+    });
     res.status(201).json({ success: true, data: newNote, message: "Note Created Successfully" });
 }));
 
@@ -207,9 +214,11 @@ app.get("/api/v1/notes", auth.protect, validate(QueryNoteSchema), catchAsync(asy
 // Route for getting a note by id
 app.get("/api/v1/notes/:id", auth.protect, catchAsync(async (req, res) => {
     const { id } = req.params;
-    const owner = req.user.id;
-    const currentNote = await note.findOne({ _id: id, owner });
-    if (!currentNote) {
+    const userId = parseInt(req.user.id, 10);
+    const currentNote = await prisma.note.findUnique({
+        where: { id: parseInt(id, 10) }
+    });
+    if (!currentNote || currentNote.userId !== userId) {
         throw new AppError("Note Not Found", 404);
     }
     res.status(200).json({ success: true, note: currentNote, message: "Note Fetched Successfully" });
