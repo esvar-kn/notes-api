@@ -54,3 +54,4 @@ coverage/
 *.swp
 *.swo
 /generated/prisma
+/redis-local/

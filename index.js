@@ -11,6 +11,8 @@ const logger = require("./utils/logger");
 const AppError = require("./utils/appError");
 const { PrismaClient } = require("./generated/prisma");
 const prisma = new PrismaClient();
+const Redis = require('ioredis');
+const redis = new Redis(process.env.REDIS_URL);
 
 const app = express();
 const PORT = process.env.PORT;
@@ -215,13 +217,31 @@ app.get("/api/v1/notes", auth.protect, validate(QueryNoteSchema), catchAsync(asy
 app.get("/api/v1/notes/:id", auth.protect, catchAsync(async (req, res) => {
     const { id } = req.params;
     const userId = parseInt(req.user.id, 10);
+    const cacheKey = `note:${id}`;
+
+    // Try to get note from Redis cache
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+        const parsedNote = JSON.parse(cached);
+        // Enforce ownership validation on cached item
+        if (parsedNote.userId !== userId) {
+            throw new AppError("Note Not Found", 404);
+        }
+        return res.status(200).json({ success: true, note: parsedNote, fromCache: true, message: "Note Fetched Successfully" });
+    }
+
+    // Cache miss - query DB
     const currentNote = await prisma.note.findUnique({
         where: { id: parseInt(id, 10) }
     });
     if (!currentNote || currentNote.userId !== userId) {
         throw new AppError("Note Not Found", 404);
     }
-    res.status(200).json({ success: true, note: currentNote, message: "Note Fetched Successfully" });
+
+    // Store in cache for 5 minutes (300 seconds TTL)
+    await redis.set(cacheKey, JSON.stringify(currentNote), 'EX', 300);
+
+    res.status(200).json({ success: true, note: currentNote, fromCache: false, message: "Note Fetched Successfully" });
 }));
 
 // Route for updating a note by id
