@@ -62,14 +62,14 @@ const catchAsync = (fn) => (req, res, next) => {
 const RegisterSchema = z.object({
     body: z.object({
         name: z.string().min(2, "Name must be at least 2 characters").max(50),
-        email: z.string().email("Invalid email address"),
+        email: z.email("Invalid email address"),
         password: z.string().min(8, "Password must be at least 8 characters")
     })
 });
 
 const LoginSchema = z.object({
     body: z.object({
-        email: z.string().email("Invalid email address"),
+        email: z.email("Invalid email address"),
         password: z.string().min(1, "Password is required")
     })
 });
@@ -78,7 +78,7 @@ const UpdateUserSchema = z.object({
     body: z.object({
         id: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid User ID format"),
         name: z.string().min(2).optional(),
-        email: z.string().email().optional(),
+        email: z.email().optional(),
         password: z.string().min(8).optional()
     })
 });
@@ -128,8 +128,7 @@ app.post("/api/v1/users/register", validate(RegisterSchema), catchAsync(async (r
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const newUser = new user({ name, email, password: hashedPassword }); // Fixed key naming alignment
-    await newUser.save();
+    const newUser = newUser.create({ name, email, password: hashedPassword }); // Fixed key naming alignment
 
     res.status(201).json({
         success: true,
@@ -255,14 +254,14 @@ app.get("/api/v1/notes", auth.protect, ensurePostgresUser, validate(QueryNoteSch
     const cached = await redis.get(cacheKey);
     if (cached) {
         const parsedNotes = JSON.parse(cached);
-        return res.status(200).json({ 
-            success: true, 
-            count: parsedNotes.length, 
-            page, 
-            limit, 
-            notes: parsedNotes, 
-            fromCache: true, 
-            message: "Notes Fetched Successfully" 
+        return res.status(200).json({
+            success: true,
+            count: parsedNotes.length,
+            page,
+            limit,
+            notes: parsedNotes,
+            fromCache: true,
+            message: "Notes Fetched Successfully"
         });
     }
 
