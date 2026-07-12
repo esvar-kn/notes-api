@@ -55,3 +55,4 @@ coverage/
 *.swo
 /generated/prisma
 /redis-local/
+dump.rdb

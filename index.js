@@ -4,13 +4,21 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const z = require('zod');
-const note = require("./models/note");
 const user = require("./models/user");
 const auth = require("./middlewares/auth");
 const logger = require("./utils/logger");
 const AppError = require("./utils/appError");
 const { PrismaClient } = require("./generated/prisma");
-const prisma = new PrismaClient();
+const { PrismaPg } = require("@prisma/adapter-pg");
+const { Pool } = require("pg");
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const cors = require('cors');
+const validator = require('validator');
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 const Redis = require('ioredis');
 const redis = new Redis(process.env.REDIS_URL);
 
@@ -22,6 +30,15 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRY = process.env.JWT_EXPIRY;
 
 app.use(express.json());
+app.use(helmet());
+app.use(cors({ origin: process.env.ALLOWED_ORIGIN, credentials: true }));
+
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100,                 // limit each IP to 100 requests per window
+    message: { success: false, message: 'Too many requests, try again later.' }
+});
+app.use('/api/', apiLimiter);
 
 // Request logging middleware - logs every request with status and response time
 app.use((req, res, next) => {
@@ -68,8 +85,8 @@ const UpdateUserSchema = z.object({
 
 const NoteSchema = z.object({
     body: z.object({
-        title: z.string().min(1, "Title is required").max(200),
-        content: z.string().min(1, "Content cannot be empty")
+        title: z.string().min(1, "Title is required").max(200).transform(val => validator.escape(val.trim())),
+        content: z.string().min(1, "Content cannot be empty").transform(val => validator.escape(val.trim()))
     })
 });
 
@@ -179,10 +196,40 @@ app.delete("/api/v1/users", auth.protect, catchAsync(async (req, res) => {
 
 // --- NOTE ROUTES ---
 
+const getNumericId = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash << 5) - hash + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+};
+
+const ensurePostgresUser = catchAsync(async (req, res, next) => {
+    const userId = getNumericId(req.user.id);
+    req.user.numericId = userId;
+
+    await prisma.user.upsert({
+        where: { id: userId },
+        update: {
+            name: req.user.name,
+            email: req.user.email,
+            password: req.user.password
+        },
+        create: {
+            id: userId,
+            name: req.user.name,
+            email: req.user.email,
+            password: req.user.password
+        }
+    });
+    next();
+});
+
 // Route for creating a new note
-app.post("/api/v1/notes", auth.protect, validate(NoteSchema), catchAsync(async (req, res) => {
+app.post("/api/v1/notes", auth.protect, ensurePostgresUser, validate(NoteSchema), catchAsync(async (req, res) => {
     const { title, content } = req.body;
-    const userId = parseInt(req.user.id, 10);
+    const userId = req.user.numericId;
 
     const newNote = await prisma.note.create({
         data: {
@@ -195,28 +242,67 @@ app.post("/api/v1/notes", auth.protect, validate(NoteSchema), catchAsync(async (
 }));
 
 // Route for getting all notes with pagination and search
-app.get("/api/v1/notes", auth.protect, validate(QueryNoteSchema), catchAsync(async (req, res) => {
-    const owner = req.user.id;
-    const { page, limit, sort, order, filter } = req.query;
+app.get("/api/v1/notes", auth.protect, ensurePostgresUser, validate(QueryNoteSchema), catchAsync(async (req, res) => {
+    const userId = req.user.numericId;
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const { sort, order, filter } = req.query;
     const skip = (page - 1) * limit;
 
-    // Whitelist query keys to avoid NoSQL injection attempts through filter object
-    const queryConditions = { owner };
-    if (filter.title) queryConditions.title = { $regex: filter.title, $options: 'i' };
-    if (filter.content) queryConditions.content = { $regex: filter.content, $options: 'i' };
+    const cacheKey = `notes:user:${userId}:page:${page}:limit:${limit}`;
 
-    const notes = await note.find(queryConditions)
-        .sort({ [sort]: order === "desc" ? -1 : 1 })
-        .skip(skip)
-        .limit(limit);
+    // Try to get notes from Redis cache
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+        const parsedNotes = JSON.parse(cached);
+        return res.status(200).json({ 
+            success: true, 
+            count: parsedNotes.length, 
+            page, 
+            limit, 
+            notes: parsedNotes, 
+            fromCache: true, 
+            message: "Notes Fetched Successfully" 
+        });
+    }
 
-    res.status(200).json({ success: true, count: notes.length, page, limit, notes, message: "Notes Fetched Successfully" });
+    // Build the query conditions for Prisma
+    const where = {
+        userId
+    };
+
+    if (filter.title) {
+        where.title = {
+            contains: filter.title,
+            mode: 'insensitive'
+        };
+    }
+    if (filter.content) {
+        where.content = {
+            contains: filter.content,
+            mode: 'insensitive'
+        };
+    }
+
+    const notes = await prisma.note.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: {
+            [sort]: order
+        }
+    });
+
+    // Store in cache for 60 seconds (short TTL for paginated list)
+    await redis.set(cacheKey, JSON.stringify(notes), 'EX', 60);
+
+    res.status(200).json({ success: true, count: notes.length, page, limit, notes, fromCache: false, message: "Notes Fetched Successfully" });
 }));
 
 // Route for getting a note by id
-app.get("/api/v1/notes/:id", auth.protect, catchAsync(async (req, res) => {
+app.get("/api/v1/notes/:id", auth.protect, ensurePostgresUser, catchAsync(async (req, res) => {
     const { id } = req.params;
-    const userId = parseInt(req.user.id, 10);
+    const userId = req.user.numericId;
     const cacheKey = `note:${id}`;
 
     // Try to get note from Redis cache
@@ -245,27 +331,63 @@ app.get("/api/v1/notes/:id", auth.protect, catchAsync(async (req, res) => {
 }));
 
 // Route for updating a note by id
-app.put("/api/v1/notes/:id", auth.protect, validate(NoteSchema), catchAsync(async (req, res) => {
+app.put("/api/v1/notes/:id", auth.protect, ensurePostgresUser, validate(NoteSchema), catchAsync(async (req, res) => {
     const { id } = req.params;
     const { title, content } = req.body;
-    const owner = req.user.id;
+    const userId = req.user.numericId;
+    const noteId = parseInt(id, 10);
+    const cacheKey = `note:${id}`;
 
-    const updatedNote = await note.findOneAndUpdate({ _id: id, owner }, { title, content }, { new: true });
-    if (!updatedNote) {
+    // Verify ownership first
+    const currentNote = await prisma.note.findUnique({
+        where: { id: noteId }
+    });
+    if (!currentNote) {
         throw new AppError("Note Not Found", 404);
     }
+    if (currentNote.userId !== userId) {
+        throw new AppError("Forbidden", 403);
+    }
+
+    // Perform update
+    const updatedNote = await prisma.note.update({
+        where: { id: noteId },
+        data: { title, content }
+    });
+
+    // Invalidate cached note
+    await redis.del(cacheKey);
+
     res.status(200).json({ success: true, updatedNote, message: "Note Updated Successfully" });
 }));
 
 // Route for deleting a note by id
-app.delete("/api/v1/notes/:id", auth.protect, catchAsync(async (req, res) => {
+app.delete("/api/v1/notes/:id", auth.protect, ensurePostgresUser, catchAsync(async (req, res) => {
     const { id } = req.params;
-    const owner = req.user.id;
-    const deletedNote = await note.findOneAndDelete({ _id: id, owner });
-    if (!deletedNote) {
+    const userId = req.user.numericId;
+    const noteId = parseInt(id, 10);
+    const cacheKey = `note:${id}`;
+
+    // Verify ownership first
+    const currentNote = await prisma.note.findUnique({
+        where: { id: noteId }
+    });
+    if (!currentNote) {
         throw new AppError("Note Not Found", 404);
     }
-    res.status(200).json({ success: true, message: "Note Deleted Successfully" });
+    if (currentNote.userId !== userId) {
+        throw new AppError("Forbidden", 403);
+    }
+
+    // Perform delete
+    await prisma.note.delete({
+        where: { id: noteId }
+    });
+
+    // Invalidate cached note
+    await redis.del(cacheKey);
+
+    res.status(204).end();
 }));
 
 // Route for basic health check

@@ -1,34 +1,55 @@
 # Notes API
 
-A RESTful API for managing personal notes, built with **Node.js**, **Express 5**, **MongoDB** (Mongoose), and **JWT** authentication.
+A production-ready RESTful API for managing personal notes, featuring a hybrid database architecture (MongoDB + PostgreSQL), Redis caching, rate limiting, and input sanitization.
+
+## Architecture
+
+This project uses a hybrid database design and caching to maximize performance:
+- **User Accounts & Authentication**: Stored in **MongoDB** via Mongoose.
+- **Notes Management**: Stored in **PostgreSQL** via **Prisma Client**.
+- **Caching**: High-performance cache-aside caching using **Redis** (powered by `ioredis`):
+  - Paginated list queries (`GET /api/v1/notes`) are cached with a short TTL (60 seconds) to balance performance and freshness.
+  - Note detail queries (`GET /api/v1/notes/:id`) are cached with a 5-minute TTL.
+  - Note updates (`PUT`) and deletions (`DELETE`) immediately invalidate the corresponding detail cache key (`note:<id>`) for real-time consistency.
+- **Deterministic ID Bridge**: A custom hashing middleware (`ensurePostgresUser`) bridges MongoDB hex ObjectIds to PostgreSQL integer primary keys and automatically ensures user profiles exist in both databases.
+
+## Security & Reliability
+
+- **Rate Limiting**: Integrated `express-rate-limit` to prevent abuse on all `/api/` endpoints (configured to 100 requests per 15 minutes).
+- **HTTP Headers Security**: Uses `helmet` to set secure headers.
+- **CORS Support**: Configured `cors` with support for credentials and specific origins.
+- **Input Sanitization**: Automatically sanitizes title and content inputs via `validator.escape()` inside Zod validator middleware to defend against XSS injection attacks.
 
 ## Tech Stack
 
-| Layer          | Technology              |
-|----------------|-------------------------|
-| Runtime        | Node.js v18+            |
-| Framework      | Express 5               |
-| Database       | MongoDB + Mongoose 9    |
-| Auth           | JWT (jsonwebtoken)      |
-| Validation     | Zod                     |
-| Password Hash  | bcrypt                  |
-| Logging        | Winston                 |
-| Dev Server     | nodemon                 |
+| Layer          | Technology                    |
+|----------------|-------------------------------|
+| Runtime        | Node.js v18+                  |
+| Framework      | Express 5                     |
+| Databases      | MongoDB & PostgreSQL          |
+| ORM / Client   | Prisma 6 & Mongoose 9         |
+| Cache Database | Redis (`ioredis`)             |
+| Auth           | JWT (jsonwebtoken)            |
+| Validation     | Zod & Validator.js            |
+| Security       | Helmet, CORS, Rate Limit      |
+| Logging        | Winston                       |
 
 ## Project Structure
 
 ```
 notes-api/
 ├── docs/
-│   └── API_SPEC.md         # Full API documentation
-├── logs/
-│   ├── combined.log        # All logs (git-ignored)
-│   └── error.log           # Error-only logs (git-ignored)
+│   ├── API_SPEC.md         # Full API documentation
+│   └── SCHEMA.md           # Relational schema reference
+├── generated/
+│   └── prisma/             # Generated Prisma client (git-ignored)
 ├── middlewares/
 │   └── auth.js             # JWT protect middleware
 ├── models/
-│   ├── note.js             # Note Mongoose schema
 │   └── user.js             # User Mongoose schema
+├── prisma/
+│   ├── migrations/         # PostgreSQL DB migrations
+│   └── schema.prisma       # Prisma relational schema
 ├── utils/
 │   ├── appError.js         # Operational error class
 │   └── logger.js           # Winston logger config
@@ -36,12 +57,13 @@ notes-api/
 ├── .gitignore
 ├── index.js                # App entry point (routes + middleware)
 ├── nodemon.json            # nodemon watch config
-└── package.json
+├── package.json
+└── prisma.config.ts        # Prisma configuration
 ```
 
 ## Getting Started
 
-### 1. Clone and install
+### 1. Clone and Install
 
 ```bash
 git clone https://github.com/esvar-kn/notes-api.git
@@ -49,77 +71,57 @@ cd notes-api
 npm install
 ```
 
-### 2. Configure environment
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your values:
-
+Edit `.env` with your connection strings:
 ```env
 PORT=3000
 MONGO_URI=mongodb://localhost:27017/notes-api
 JWT_SECRET=your_super_secret_key_here
 JWT_EXPIRY=7d
 SALT_ROUNDS=10
+DATABASE_URL="postgresql://postgres:password@localhost:5432/notesdb"
+REDIS_URL="redis://localhost:6379"
 ```
 
-### 3. Run
+### 3. Initialize PostgreSQL Database
+
+Apply the migrations to set up PostgreSQL schemas:
+```bash
+npx prisma migrate dev
+```
+
+### 4. Build Prisma Client
+
+Generate the plain JavaScript client:
+```bash
+npx prisma generate
+```
+
+### 5. Running the Application
+
+Ensure MongoDB, PostgreSQL, and Redis servers are running locally.
 
 ```bash
-# Development (nodemon, auto-restart, colored request logs)
+# Development (nodemon, auto-restart, colored logs)
 npm run dev
 
 # Production
 npm start
 ```
 
-## API Overview
-
-Base URL: `/api/v1`
-
-| Method | Endpoint                  | Auth | Description           |
-|--------|---------------------------|------|-----------------------|
-| POST   | `/users/register`         | ❌   | Register new user     |
-| POST   | `/users/login`            | ❌   | Login & get JWT       |
-| PUT    | `/users`                  | ✅   | Update own profile    |
-| DELETE | `/users`                  | ✅   | Delete own account    |
-| POST   | `/notes`                  | ✅   | Create a note         |
-| GET    | `/notes`                  | ✅   | Get all notes (paginated) |
-| GET    | `/notes/:id`              | ✅   | Get note by ID        |
-| PUT    | `/notes/:id`              | ✅   | Update note           |
-| DELETE | `/notes/:id`              | ✅   | Delete note           |
-
-See [`docs/API_SPEC.md`](docs/API_SPEC.md) for full request/response documentation.
-
-## Authentication
-
-Protected routes require a Bearer token in the `Authorization` header:
-
-```
-Authorization: Bearer <jwt_token>
-```
-
-Obtain a token by logging in via `POST /api/v1/users/login`.
-
 ## Environment Variables
 
-| Variable     | Required | Default | Description                        |
-|--------------|----------|---------|------------------------------------|
-| `PORT`       | ✅       | —       | Port the server listens on         |
-| `MONGO_URI`  | ✅       | —       | MongoDB connection string          |
-| `JWT_SECRET` | ✅       | —       | Secret key for signing JWT tokens  |
-| `JWT_EXPIRY` | ✅       | `7d`    | JWT token expiry duration          |
-| `SALT_ROUNDS`| ✅       | `10`    | bcrypt salt rounds                 |
-
-## Logging
-
-- **Development**: Colored request logs in terminal + JSON files in `logs/`
-- **Production**: JSON file logs only (`logs/combined.log`, `logs/error.log`)
-
-Request log format:
-```
-2026-07-05 15:31:13 http: POST /api/v1/users/login 200 - 434ms
-2026-07-05 15:31:20 warn: GET /api/v1/notes 401 - 2ms
-```
+| Variable       | Required | Default                  | Description                            |
+|----------------|----------|--------------------------|----------------------------------------|
+| `PORT`         | ✅       | —                        | Port the server listens on             |
+| `MONGO_URI`    | ✅       | —                        | MongoDB connection string              |
+| `DATABASE_URL` | ✅       | —                        | PostgreSQL connection string           |
+| `REDIS_URL`    | ✅       | `redis://localhost:6379` | Redis connection string                |
+| `JWT_SECRET`   | ✅       | —                        | Secret key for signing JWT tokens      |
+| `JWT_EXPIRY`   | ✅       | `7d`                     | JWT token expiry duration              |
+| `SALT_ROUNDS`  | ✅       | `10`                     | bcrypt salt rounds                     |
