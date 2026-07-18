@@ -33,6 +33,12 @@ const logger = winston.createLogger({
     levels: winston.config.npm.levels,
     level: process.env.NODE_ENV === 'production' ? 'info' : 'http',
     transports: [
+        new winston.transports.Console({
+            format: process.env.NODE_ENV === 'production' ? fileFormat() : consoleFormat(),
+            stderrLevels: ['error'],     // Route error logs to stderr
+            handleExceptions: true,
+            handleRejections: true
+        }),
         new winston.transports.File({
             filename: 'logs/error.log',
             level: 'error',
@@ -46,14 +52,5 @@ const logger = winston.createLogger({
         }),
     ],
 });
-
-if (process.env.NODE_ENV !== 'production') {
-    logger.add(new winston.transports.Console({
-        format: consoleFormat(),
-        stderrLevels: [],            // all levels → stdout (not stderr)
-        handleExceptions: true,
-        handleRejections: true
-    }));
-}
 
 module.exports = logger;

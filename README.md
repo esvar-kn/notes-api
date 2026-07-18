@@ -114,14 +114,69 @@ npm run dev
 npm start
 ```
 
+### 6. Running with Docker Compose
+
+To run the entire stack (API, PostgreSQL database, and Redis cache) as Docker containers:
+
+1. Create a copy of `.env.docker.example` named `.env.docker`:
+   ```bash
+   cp .env.docker.example .env.docker
+   ```
+2. Populate `.env.docker` with your MongoDB connection details, JWT secret, and database passwords.
+3. Start the orchestrator:
+   ```bash
+   docker compose up -d --build
+   ```
+   *Note: Database migrations (`npx prisma migrate deploy`) will run automatically inside the container when it starts.*
+
 ## Environment Variables
 
-| Variable       | Required | Default                  | Description                            |
-|----------------|----------|--------------------------|----------------------------------------|
-| `PORT`         | ✅       | —                        | Port the server listens on             |
-| `MONGO_URI`    | ✅       | —                        | MongoDB connection string              |
-| `DATABASE_URL` | ✅       | —                        | PostgreSQL connection string           |
-| `REDIS_URL`    | ✅       | `redis://localhost:6379` | Redis connection string                |
-| `JWT_SECRET`   | ✅       | —                        | Secret key for signing JWT tokens      |
-| `JWT_EXPIRY`   | ✅       | `7d`                     | JWT token expiry duration              |
-| `SALT_ROUNDS`  | ✅       | `10`                     | bcrypt salt rounds                     |
+The project uses different configuration files depending on your execution environment:
+* **`.env`**: Used for running the server locally outside Docker (e.g. `npm run dev`).
+* **`.env.docker`**: Used when running the app as a standalone Docker container or via Docker Compose.
+
+---
+
+### 1. Core Server Configuration (Required Everywhere)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `PORT` | ✅ | — | Port the Express server listens on |
+| `MONGO_URI` | ✅ | — | MongoDB connection string (e.g. MongoDB Atlas cluster) |
+| `JWT_SECRET` | ✅ | — | Secret key for signing and verifying JWT tokens |
+| `JWT_EXPIRY` | ✅ | `7d` | Token expiration duration (e.g., `1h`, `7d`) |
+| `SALT_ROUNDS` | ✅ | `10` | Cryptographic complexity factor for bcrypt password hashing |
+
+---
+
+### 2. Local Environment Configuration (Host/Bare-Metal Run)
+Place these in your local `.env` file when running the server directly on your host machine:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | `postgresql://postgres:devpass@localhost:5432/notesdb` | Connection string to your local PostgreSQL server |
+| `REDIS_URL` | ✅ | `redis://localhost:6379` | Connection string to your local Redis server |
+
+---
+
+### 3. Container Network Configuration (Docker Compose Run)
+Place these in your `.env.docker` file. These values utilize Docker DNS network paths to connect to database containers on the same network bridge:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ | `postgresql://postgres:devpass@postgres:5432/notesdb` | Connection string to the `postgres` container service |
+| `REDIS_URL` | ✅ | `redis://redis:6379` | Connection string to the `redis` container service |
+
+*(Note: If you are running the API container as a standalone container using `docker run` but connecting to databases hosted natively on your host machine, use `host.docker.internal` instead of `postgres` or `redis` as the host domain).*
+
+---
+
+### 4. Database Setup Config (PostgreSQL Container Initialization)
+These configure the root database credentials when the PostgreSQL container initializes via Docker Compose:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `POSTGRES_USER` | ❌ | `postgres` | Username for the root PostgreSQL user |
+| `POSTGRES_PASSWORD` | ❌ | `devpass` | Password for the root PostgreSQL user |
+| `POSTGRES_DB` | ❌ | `notesdb` | Name of the default database created on startup |
+

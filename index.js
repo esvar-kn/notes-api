@@ -128,7 +128,7 @@ app.post("/api/v1/users/register", validate(RegisterSchema), catchAsync(async (r
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-    const newUser = newUser.create({ name, email, password: hashedPassword }); // Fixed key naming alignment
+    const newUser = await user.create({ name, email, password: hashedPassword }); // Fixed key naming alignment
 
     res.status(201).json({
         success: true,

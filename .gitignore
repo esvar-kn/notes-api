@@ -57,3 +57,11 @@ coverage/
 /generated/prisma
 /redis-local/
 dump.rdb
+
+# ========================
+# Docker
+# ========================
+.docker/
+docker-compose.override.yml
+*.tar
+
